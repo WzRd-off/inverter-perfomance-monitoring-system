@@ -3,60 +3,88 @@ import os
 
 class DatabaseManager:
     def __init__(self, db_path: str):
+        """
+        Инициализация менеджера БД.
+        :param db_path: Путь к файлу базы данных (например, 'data/app_database.db')
+        """
         self.db_path = db_path
         self.connection = None
         self._ensure_db_folder_exists()
 
     def _ensure_db_folder_exists(self):
+        """Создает папку для БД, если ее нет."""
         folder = os.path.dirname(self.db_path)
         if folder and not os.path.exists(folder):
             os.makedirs(folder)
 
     def connect(self):
+        """Создает подключение к БД, если его нет."""
         if self.connection is None:
             try:
                 self.connection = sqlite3.connect(self.db_path)
+                # Позволяет обращаться к полям по имени (row['id'])
                 self.connection.row_factory = sqlite3.Row
+                # Включаем поддержку внешних ключей
                 self.connection.execute("PRAGMA foreign_keys = ON;")
             except sqlite3.Error as e:
                 print(f"Ошибка подключения к БД: {e}")
 
     def close(self):
+        """Закрывает подключение."""
         if self.connection:
             self.connection.close()
             self.connection = None
 
     def execute_script(self, script_path: str):
+        """
+        Выполняет SQL-скрипт из файла (для создания таблиц).
+        """
         self.connect()
         if not os.path.exists(script_path):
+            print(f"Файл схемы не найден: {script_path}")
             return False
         try:
             with open(script_path, 'r', encoding='utf-8') as f:
                 sql_script = f.read()
             self.connection.executescript(sql_script)
             self.connection.commit()
+            print(f"Скрипт {script_path} успешно выполнен.")
             return True
-        except Exception:
+        except Exception as e:
+            print(f"Ошибка при выполнении SQL скрипта: {e}")
             return False
 
     def execute_query(self, query: str, params: tuple = (), fetch_one=False, fetch_all=False):
+        """
+        Универсальный метод для выполнения запросов.
+        :param query: SQL запрос
+        :param params: Кортеж параметров (?, ?)
+        :param fetch_one: Вернуть одну строку?
+        :param fetch_all: Вернуть все строки?
+        :return: Результат запроса или None
+        """
         self.connect()
         cursor = self.connection.cursor()
         try:
             cursor.execute(query, params)
+            
             if query.strip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
                 self.connection.commit()
-                return cursor.lastrowid
+                return cursor.lastrowid # Для INSERT возвращаем ID созданной строки
+            
             if fetch_one:
                 return cursor.fetchone()
             if fetch_all:
                 return cursor.fetchall()
+                
         except sqlite3.Error as e:
             print(f"SQL Error: {e}")
             return None
 
-    # --- INVERTERS CRUD ---
+    # --- INVERTERS CRUD (Управление инверторами) ---
+
     def get_all_inverters(self):
+        """Получить список всех инверторов с названием модели"""
         query = """
             SELECT i.*, m.model_name 
             FROM inverters i
@@ -66,9 +94,11 @@ class DatabaseManager:
         return self.execute_query(query, fetch_all=True)
 
     def get_inverter_models(self):
+        """Получить список всех моделей инверторов для выпадающего списка"""
         return self.execute_query("SELECT id, model_name FROM model_inverters", fetch_all=True)
 
     def add_inverter(self, model_id, serial_number, location, install_date):
+        """Добавить новый инвертор"""
         query = """
             INSERT INTO inverters (model_id, serial_number, location, install_date, status)
             VALUES (?, ?, ?, ?, 'Offline')
@@ -76,6 +106,7 @@ class DatabaseManager:
         return self.execute_query(query, (model_id, serial_number, location, install_date))
 
     def update_inverter(self, inverter_id, model_id, serial_number, location, install_date):
+        """Обновить данные инвертора"""
         query = """
             UPDATE inverters 
             SET model_id=?, serial_number=?, location=?, install_date=?
@@ -84,15 +115,89 @@ class DatabaseManager:
         return self.execute_query(query, (model_id, serial_number, location, install_date, inverter_id))
 
     def delete_inverter(self, inverter_id):
+        """Удалить инвертор"""
         return self.execute_query("DELETE FROM inverters WHERE id=?", (inverter_id,))
 
-    # --- STATISTICS & MONITORING METHODS ---
+    # --- BATTERIES CRUD (Управление аккумуляторами) ---
+    
+    def get_all_batteries(self):
+        """Отримати список всіх батарей з назвами моделей та інверторів"""
+        query = """
+            SELECT b.*, m.battery_model, i.serial_number as inverter_sn
+            FROM batteries b
+            LEFT JOIN model_batteries m ON b.model_id = m.id
+            LEFT JOIN inverters i ON b.inverter_id = i.id
+            ORDER BY b.id DESC
+        """
+        return self.execute_query(query, fetch_all=True)
+
+    def get_battery_models(self):
+        """Получить список моделей батарей"""
+        return self.execute_query("SELECT id, battery_model FROM model_batteries", fetch_all=True)
+
+    def get_inverters_simple(self):
+        """Простий список інверторів для випадаючого списку (ID + SN)"""
+        return self.execute_query("SELECT id, serial_number FROM inverters", fetch_all=True)
+
+    def add_battery(self, model_id, serial_number, install_date, inverter_id):
+        """Добавить новую батарею"""
+        query = """
+            INSERT INTO batteries (model_id, serial_number, install_date, inverter_id, status)
+            VALUES (?, ?, ?, ?, 'Normal')
+        """
+        return self.execute_query(query, (model_id, serial_number, install_date, inverter_id))
+
+    def update_battery(self, battery_id, model_id, serial_number, install_date, inverter_id):
+        """Обновить данные батареи"""
+        query = """
+            UPDATE batteries 
+            SET model_id=?, serial_number=?, install_date=?, inverter_id=?
+            WHERE id=?
+        """
+        return self.execute_query(query, (model_id, serial_number, install_date, inverter_id, battery_id))
+
+    def delete_battery(self, battery_id):
+        """Удалить батарею"""
+        return self.execute_query("DELETE FROM batteries WHERE id=?", (battery_id,))
+
+    # --- ERRORS LOG METHODS (Журнал сбоев) ---
+
+    def get_all_errors(self, status_filter=None):
+        """
+        Отримати список помилок.
+        status_filter: 'Active' (показувати тільки не вирішені), 'Resolved', або None (всі)
+        """
+        base_query = """
+            SELECT e.*, i.serial_number as inverter_sn, i.name as inverter_name
+            FROM errors e
+            LEFT JOIN inverters i ON e.inverter_id = i.id
+        """
+        
+        if status_filter == 'Active':
+            # Активні - це ті, у яких немає дати вирішення (NULL)
+            query = base_query + " WHERE e.date_resolved IS NULL ORDER BY e.timestamp DESC"
+            return self.execute_query(query, fetch_all=True)
+        elif status_filter == 'Resolved':
+            query = base_query + " WHERE e.date_resolved IS NOT NULL ORDER BY e.timestamp DESC"
+            return self.execute_query(query, fetch_all=True)
+        else:
+            # Всі
+            query = base_query + " ORDER BY e.timestamp DESC"
+            return self.execute_query(query, fetch_all=True)
+
+    def resolve_error(self, error_id):
+        """Позначити помилку як вирішену (встановити поточну дату)"""
+        query = """
+            UPDATE errors 
+            SET date_resolved = CURRENT_TIMESTAMP, status = 'Resolved'
+            WHERE id = ?
+        """
+        return self.execute_query(query, (error_id,))
+
+    # --- STATISTICS & MONITORING METHODS (Мониторинг и Статистика) ---
     
     def save_sensor_data(self, data):
-        """
-        Збереження поточних показників у БД.
-        Зберігаємо timestamp як є (з літерою T), згідно ТЗ.
-        """
+        """Збереження поточних показників у БД"""
         query = """
             INSERT INTO sensor_values (
                 inverter_id, timestamp, 
@@ -104,7 +209,7 @@ class DatabaseManager:
         """
         params = (
             data.get('inverter_id'),
-            data.get('timestamp'), # Зберігаємо з T
+            data.get('timestamp'),
             data.get('dc_voltage'),      
             data.get('dc_current'),      
             data.get('dc_input_power'),  
@@ -122,18 +227,10 @@ class DatabaseManager:
         self.execute_query(query, params)
 
     def get_sensor_data_by_period(self, inverter_id, start_date, end_date):
-        """
-        Отримати показники сенсорів за вказаний період.
-        Формат пошуку: ISO 8601 (з літерою T).
-        start_date: 'YYYY-MM-DD'
-        end_date: 'YYYY-MM-DD'
-        """
-        # Формуємо ISO рядки для пошуку
-        
+        """Отримати показники сенсорів за вказаний період"""
         start_ts = f"{start_date}T00:00:00"
         end_ts = f"{end_date}T23:59:59"
-        print(start_ts, end_ts)
-        # Аліаси (as) обов'язкові, щоб Calculator зрозумів імена полів
+        
         query = """
             SELECT timestamp, pv_power as dc_input_power, output_power as ac_output_power, status
             FROM sensor_values
@@ -145,7 +242,7 @@ class DatabaseManager:
         return self.execute_query(query, (inverter_id, start_ts, end_ts), fetch_all=True)
 
     def get_errors_count_by_period(self, inverter_id, start_date, end_date):
-        """Отримати кількість помилок за період (з T)"""
+        """Отримати кількість помилок за період"""
         start_ts = f"{start_date}T00:00:00"
         end_ts = f"{end_date}T23:59:59"
         
@@ -157,3 +254,45 @@ class DatabaseManager:
         """
         res = self.execute_query(query, (inverter_id, start_ts, end_ts), fetch_one=True)
         return res['error_count'] if res else 0
+
+    # --- PROFILE METHODS (Профиль пользователя) ---
+
+    def get_user_by_id(self, user_id):
+        """Получить данные пользователя по ID"""
+        return self.execute_query("SELECT * FROM users WHERE id=?", (user_id,), fetch_one=True)
+
+    def update_user_profile(self, user_id, full_name, email, phone):
+        """Обновить профиль пользователя"""
+        query = "UPDATE users SET full_name=?, email=?, phone=? WHERE id=?"
+        return self.execute_query(query, (full_name, email, phone, user_id))
+
+    def check_password(self, user_id, password_hash):
+        """Проверить текущий пароль (хеш)"""
+        res = self.execute_query("SELECT id FROM users WHERE id=? AND password_hash=?", (user_id, password_hash), fetch_one=True)
+        return res is not None
+
+    def change_password(self, user_id, new_hash):
+        """Изменить пароль пользователя"""
+        return self.execute_query("UPDATE users SET password_hash=? WHERE id=?", (new_hash, user_id))
+
+    # --- DASHBOARD METRICS (Новое: Для главной страницы) ---
+    def get_dashboard_stats(self):
+        """Получить сводные цифры для дашборда"""
+        stats = {}
+        # 1. Всего инверторов
+        res = self.execute_query("SELECT COUNT(*) as cnt FROM inverters", fetch_one=True)
+        stats['inverters_total'] = res['cnt'] if res else 0
+
+        # 2. Активных (условно статус != 'Offline')
+        res = self.execute_query("SELECT COUNT(*) as cnt FROM inverters WHERE status != 'Offline'", fetch_one=True)
+        stats['inverters_active'] = res['cnt'] if res else 0
+
+        # 3. Активные ошибки (не решенные)
+        res = self.execute_query("SELECT COUNT(*) as cnt FROM errors WHERE date_resolved IS NULL", fetch_one=True)
+        stats['active_errors'] = res['cnt'] if res else 0
+
+        # 4. Всего батарей
+        res = self.execute_query("SELECT COUNT(*) as cnt FROM batteries", fetch_one=True)
+        stats['batteries_total'] = res['cnt'] if res else 0
+
+        return stats

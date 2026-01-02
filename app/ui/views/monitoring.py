@@ -143,7 +143,7 @@ class MonitoringView(QWidget):
             self.timer.start(1000)
             self.combo_inverter.setEnabled(False) # Блокуємо вибір під час роботи
         else:
-            self.is_monitoring = FalseS
+            self.is_monitoring = False
             self.btn_toggle.setText("Запустити моніторинг")
             self.btn_toggle.setStyleSheet(BUTTON_STYLE)
             self.timer.stop()
