@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT,
     is_admin INTEGER DEFAULT 0, -- 0 = User, 1 = Admin
     is_active INTEGER DEFAULT 1,
-    created_at TEXT DEFAULT xCURRENT_TIMESTAMP,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     last_login TEXT,
     full_name TEXT,
     phone TEXT

@@ -129,9 +129,10 @@ class DatabaseManager:
         end_date: 'YYYY-MM-DD'
         """
         # Формуємо ISO рядки для пошуку
+        
         start_ts = f"{start_date}T00:00:00"
         end_ts = f"{end_date}T23:59:59"
-        
+        print(start_ts, end_ts)
         # Аліаси (as) обов'язкові, щоб Calculator зрозумів імена полів
         query = """
             SELECT timestamp, pv_power as dc_input_power, output_power as ac_output_power, status
