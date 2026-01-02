@@ -114,3 +114,16 @@ CREATE TABLE IF NOT EXISTS errors (
 -- ПРИМЕЧАНИЕ: В реальном проекте хеш должен генерироваться через hashlib/bcrypt
 INSERT OR IGNORE INTO users (username, password_hash, is_admin, full_name) 
 VALUES ('admin', '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918', 1, 'System Administrator');
+
+-- Добавляем модели инверторов (Чтобы было что выбирать в списке)
+INSERT OR IGNORE INTO model_inverters (model_name, rated_power, max_pv_voltage, temperature_max, warranty_months)
+VALUES 
+('SUN-5K-SG03LP1', 5000, 500, 60, 60),
+('DEYE-8K-SG01LP1', 8000, 550, 65, 120),
+('Huawei SUN2000-10KTL', 10000, 1000, 60, 120);
+
+-- Добавляем модели аккумуляторов
+INSERT OR IGNORE INTO model_batteries (battery_model, nominal_voltage, nominal_capacity)
+VALUES 
+('Pylontech US3000C', 48, 74),
+('Deye SE-G5.1 Pro', 51.2, 100);
