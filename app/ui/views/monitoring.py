@@ -150,6 +150,7 @@ class MonitoringView(QWidget):
             self.lbl_status.setText("СТАТУС: ЗУПИНЕНО")
             self.lbl_status.setStyleSheet("font-weight: bold; font-size: 16px; color: gray; margin-left: 20px;")
             self.combo_inverter.setEnabled(True)
+            
 
     def update_data(self):
         data = self.emulator.get_next_record()
@@ -158,6 +159,9 @@ class MonitoringView(QWidget):
 
         current_inv_id = self.combo_inverter.currentData()
         data['inverter_id'] = current_inv_id
+
+        self.db_manager.save_sensor_data(data)
+        print(f"DEBUG: Data saved for {data.get('timestamp')}")
 
         errors = self.analyzer.check_status(data)
         
