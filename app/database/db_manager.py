@@ -1,5 +1,6 @@
 import sqlite3
 import os
+from datetime import datetime
 
 class DatabaseManager:
     def __init__(self, db_path: str):
@@ -15,7 +16,11 @@ class DatabaseManager:
         """Создает папку для БД, если ее нет."""
         folder = os.path.dirname(self.db_path)
         if folder and not os.path.exists(folder):
-            os.makedirs(folder)
+            try:
+                os.makedirs(folder)
+                print(f"INFO: Создана папка для БД: {folder}")
+            except OSError as e:
+                print(f"ERROR: Не удалось создать папку {folder}: {e}")
 
     def connect(self):
         """Создает подключение к БД, если его нет."""
@@ -27,7 +32,7 @@ class DatabaseManager:
                 # Включаем поддержку внешних ключей
                 self.connection.execute("PRAGMA foreign_keys = ON;")
             except sqlite3.Error as e:
-                print(f"Ошибка подключения к БД: {e}")
+                print(f"CRITICAL ERROR: Ошибка подключения к БД: {e}")
 
     def close(self):
         """Закрывает подключение."""
@@ -41,17 +46,18 @@ class DatabaseManager:
         """
         self.connect()
         if not os.path.exists(script_path):
-            print(f"Файл схемы не найден: {script_path}")
+            print(f"ERROR: Файл схемы не найден по пути: {script_path}")
             return False
+        
         try:
             with open(script_path, 'r', encoding='utf-8') as f:
                 sql_script = f.read()
             self.connection.executescript(sql_script)
             self.connection.commit()
-            print(f"Скрипт {script_path} успешно выполнен.")
+            print(f"INFO: Скрипт {script_path} успешно выполнен.")
             return True
         except Exception as e:
-            print(f"Ошибка при выполнении SQL скрипта: {e}")
+            print(f"CRITICAL ERROR: Ошибка при выполнении SQL скрипта: {e}")
             return False
 
     def execute_query(self, query: str, params: tuple = (), fetch_one=False, fetch_all=False):
@@ -78,15 +84,17 @@ class DatabaseManager:
                 return cursor.fetchall()
                 
         except sqlite3.Error as e:
-            print(f"SQL Error: {e}")
+            print(f"SQL ERROR: {e}\nQuery: {query}\nParams: {params}")
             return None
 
-    # --- INVERTERS CRUD (Управление инверторами) ---
+    # =========================================================================
+    # РАЗДЕЛ 1: INVERTERS (Инверторы)
+    # =========================================================================
 
     def get_all_inverters(self):
-        """Получить список всех инверторов с названием модели"""
+        """Получить список всех инверторов с названием модели и интервалом ТО"""
         query = """
-            SELECT i.*, m.model_name 
+            SELECT i.*, m.model_name, m.maintenance_interval_days
             FROM inverters i
             LEFT JOIN model_inverters m ON i.model_id = m.id
             ORDER BY i.id DESC
@@ -118,7 +126,9 @@ class DatabaseManager:
         """Удалить инвертор"""
         return self.execute_query("DELETE FROM inverters WHERE id=?", (inverter_id,))
 
-    # --- BATTERIES CRUD (Управление аккумуляторами) ---
+    # =========================================================================
+    # РАЗДЕЛ 2: BATTERIES (Аккумуляторы)
+    # =========================================================================
     
     def get_all_batteries(self):
         """Отримати список всіх батарей з назвами моделей та інверторів"""
@@ -160,7 +170,9 @@ class DatabaseManager:
         """Удалить батарею"""
         return self.execute_query("DELETE FROM batteries WHERE id=?", (battery_id,))
 
-    # --- ERRORS LOG METHODS (Журнал сбоев) ---
+    # =========================================================================
+    # РАЗДЕЛ 3: ERRORS LOG (Журнал сбоев)
+    # =========================================================================
 
     def get_all_errors(self, status_filter=None):
         """
@@ -194,7 +206,9 @@ class DatabaseManager:
         """
         return self.execute_query(query, (error_id,))
 
-    # --- STATISTICS & MONITORING METHODS (Мониторинг и Статистика) ---
+    # =========================================================================
+    # РАЗДЕЛ 4: MONITORING & STATISTICS (Мониторинг и Статистика)
+    # =========================================================================
     
     def save_sensor_data(self, data):
         """Збереження поточних показників у БД"""
@@ -255,7 +269,9 @@ class DatabaseManager:
         res = self.execute_query(query, (inverter_id, start_ts, end_ts), fetch_one=True)
         return res['error_count'] if res else 0
 
-    # --- PROFILE METHODS (Профиль пользователя) ---
+    # =========================================================================
+    # РАЗДЕЛ 5: PROFILE & AUTH (Профиль и Авторизация)
+    # =========================================================================
 
     def get_user_by_id(self, user_id):
         """Получить данные пользователя по ID"""
@@ -275,24 +291,58 @@ class DatabaseManager:
         """Изменить пароль пользователя"""
         return self.execute_query("UPDATE users SET password_hash=? WHERE id=?", (new_hash, user_id))
 
-    # --- DASHBOARD METRICS (Новое: Для главной страницы) ---
+    # =========================================================================
+    # РАЗДЕЛ 6: DASHBOARD & ANALYTICS (Дашборд и Прогнозы)
+    # =========================================================================
+
     def get_dashboard_stats(self):
-        """Получить сводные цифры для дашборда"""
+        """Збирає всі лічильники для дашборда"""
         stats = {}
-        # 1. Всего инверторов
+        # 1. Загальна кількість
         res = self.execute_query("SELECT COUNT(*) as cnt FROM inverters", fetch_one=True)
         stats['inverters_total'] = res['cnt'] if res else 0
 
-        # 2. Активных (условно статус != 'Offline')
+        # 2. Активні (де статус не 'Offline')
         res = self.execute_query("SELECT COUNT(*) as cnt FROM inverters WHERE status != 'Offline'", fetch_one=True)
         stats['inverters_active'] = res['cnt'] if res else 0
 
-        # 3. Активные ошибки (не решенные)
+        # 3. Активні аварії
         res = self.execute_query("SELECT COUNT(*) as cnt FROM errors WHERE date_resolved IS NULL", fetch_one=True)
         stats['active_errors'] = res['cnt'] if res else 0
 
-        # 4. Всего батарей
+        # 4. Прострочене ТО (Predictive Maintenance Logic)
+        # Вибираємо інвертори, де (дата встановлення + інтервал) < сьогодні
+        # SQLite: date(install_date, '+' || maintenance_interval_days || ' days') < date('now')
+        query_maint = """
+            SELECT COUNT(*) as cnt 
+            FROM inverters i
+            JOIN model_inverters m ON i.model_id = m.id
+            WHERE date(i.install_date, '+' || m.maintenance_interval_days || ' days') < date('now')
+        """
+        res = self.execute_query(query_maint, fetch_one=True)
+        stats['maintenance_overdue'] = res['cnt'] if res else 0
+
+        # 5. Всього батарей
         res = self.execute_query("SELECT COUNT(*) as cnt FROM batteries", fetch_one=True)
         stats['batteries_total'] = res['cnt'] if res else 0
 
         return stats
+
+    def get_maintenance_forecast(self):
+        """
+        Повертає список інверторів з прогнозом ТО.
+        Для таблиці прогнозування.
+        """
+        query = """
+            SELECT 
+                i.serial_number, 
+                m.model_name,
+                i.install_date,
+                m.maintenance_interval_days,
+                date(i.install_date, '+' || m.maintenance_interval_days || ' days') as next_service_date,
+                (julianday(date(i.install_date, '+' || m.maintenance_interval_days || ' days')) - julianday('now')) as days_left
+            FROM inverters i
+            JOIN model_inverters m ON i.model_id = m.id
+            ORDER BY days_left ASC
+        """
+        return self.execute_query(query, fetch_all=True)
