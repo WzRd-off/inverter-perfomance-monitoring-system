@@ -4,13 +4,14 @@ from PyQt6.QtCore import Qt
 from app.ui.styles import MAIN_STYLE
 
 # Імпорти сторінок
+from app.ui.views.dashboard import DashboardView # <--- Додали
 from app.ui.views.devices import DevicesView
 from app.ui.views.monitoring import MonitoringView
 from app.ui.views.stats import StatsView
 from app.ui.views.batteries import BatteriesView
 from app.ui.views.errors import ErrorsView
-from app.ui.views.profile import ProfileView # <---
-from app.ui.views.reports import ReportsView # <---
+from app.ui.views.profile import ProfileView
+from app.ui.views.reports import ReportsView
 
 class MainWindow(QMainWindow):
     def __init__(self, user_data, db_manager):
@@ -41,7 +42,7 @@ class MainWindow(QMainWindow):
         self.btn_monitoring = self.create_menu_button("Мониторинг")
         self.btn_errors = self.create_menu_button("Журнал збоїв")
         self.btn_stats = self.create_menu_button("Статистика")
-        self.btn_reports = self.create_menu_button("Звіти") # <---
+        self.btn_reports = self.create_menu_button("Звіти")
         
         # Админские кнопки
         self.btn_devices = self.create_menu_button("Інвертори")
@@ -51,7 +52,7 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(self.btn_monitoring)
         sidebar_layout.addWidget(self.btn_errors)
         sidebar_layout.addWidget(self.btn_stats)
-        sidebar_layout.addWidget(self.btn_reports) # <---
+        sidebar_layout.addWidget(self.btn_reports)
         
         if self.user_data['is_admin']:
              sidebar_layout.addWidget(self.btn_devices)
@@ -60,7 +61,7 @@ class MainWindow(QMainWindow):
         sidebar_layout.addStretch()
         
         # Кнопки внизу (Профиль и Выход)
-        self.btn_profile = self.create_menu_button("Профіль") # <---
+        self.btn_profile = self.create_menu_button("Профіль")
         sidebar_layout.addWidget(self.btn_profile)
         
         self.btn_logout = self.create_menu_button("Вихід")
@@ -73,10 +74,7 @@ class MainWindow(QMainWindow):
         self.content_area.setStyleSheet("background-color: #ecf0f1;")
         
         # Стр 1: Дашборд
-        self.page_dashboard = QWidget()
-        dash_layout = QVBoxLayout(self.page_dashboard)
-        dash_layout.addWidget(QLabel(f"Вітаємо, {self.user_data['full_name']}!"))
-        dash_layout.addStretch()
+        self.page_dashboard = DashboardView(self.db_manager) # <--- Замінили заглушку на реальний віджет
         
         # Стр 2: Мониторинг
         self.page_monitoring = MonitoringView(self.db_manager)
@@ -94,10 +92,10 @@ class MainWindow(QMainWindow):
         self.page_batteries = BatteriesView(self.db_manager)
         
         # Стр 7: Звіти (Index 6)
-        self.page_reports = ReportsView(self.db_manager) # <---
+        self.page_reports = ReportsView(self.db_manager)
         
         # Стр 8: Профіль (Index 7)
-        self.page_profile = ProfileView(self.db_manager, self.user_data) # <---
+        self.page_profile = ProfileView(self.db_manager, self.user_data)
 
         self.content_area.addWidget(self.page_dashboard)   # 0
         self.content_area.addWidget(self.page_monitoring)  # 1
