@@ -64,6 +64,7 @@ class ReportsView(QWidget):
         self.setLayout(layout)
 
     def _load_inverters(self):
+        # Добавляем опцию "Всі інвертори" с data=None
         self.combo_inv.addItem("Всі інвертори", None)
         invs = self.db_manager.get_all_inverters()
         for i in invs:
@@ -72,39 +73,47 @@ class ReportsView(QWidget):
     def generate_report(self):
         r_type = self.combo_type.currentText()
         r_format = self.combo_format.currentText()
-        inv_id = self.combo_inv.currentData()
+        inv_id = self.combo_inv.currentData() # None если "Всі"
         d_start = self.date_start.date().toString("yyyy-MM-dd")
         d_end = self.date_end.date().toString("yyyy-MM-dd")
 
         data = []
         headers = []
         keys = []
+        title_suffix = ""
 
         # 1. Збір даних
         if "Історія" in r_type:
-            if inv_id is None:
-                QMessageBox.warning(self, "Увага", "Оберіть інвертор.")
-                return
+            # Убрана проверка "if inv_id is None". 
+            # Метод db_manager.get_sensor_data_by_period сам обработает None
             raw = self.db_manager.get_sensor_data_by_period(inv_id, d_start, d_end)
             data = [dict(r) for r in raw]
-            headers = ["Час", "Вхід (Вт)", "Вихід (Вт)", "Статус"]
-            keys = ["timestamp", "dc_input_power", "ac_output_power", "status"]
+            
+            headers = ["Інвертор (S/N)", "Час", "Вхід (Вт)", "Вихід (Вт)", "Статус"]
+            keys = ["inverter_sn", "timestamp", "dc_input_power", "ac_output_power", "status"]
+            
         elif "Журнал" in r_type:
             raw = self.db_manager.get_all_errors()
-            # Фільтруємо за датою вручну (так як метод повертає все)
+            # Фильтр по дате
             data = [dict(r) for r in raw if d_start <= str(r['timestamp'])[:10] <= d_end]
-            headers = ["ID", "Час", "Інвертор", "Помилка", "Статус"]
-            keys = ["id", "timestamp", "inverter_sn", "error_type", "status"]
+            # Фильтр по инвертору (если выбран конкретный)
+            if inv_id is not None:
+                data = [r for r in data if r['inverter_id'] == inv_id]
+                
+            headers = ["ID", "Час", "Інвертор", "Помилка", "Параметр", "Статус"]
+            keys = ["id", "timestamp", "inverter_sn", "error_type", "parameter_name", "status"]
 
         if not data:
             QMessageBox.information(self, "Інфо", "Дані відсутні.")
             return
 
+        title_suffix = " (Всі)" if inv_id is None else f" (ID: {inv_id})"
+
         # 2. Експорт
         if "CSV" in r_format:
             self._save_csv(data, headers, keys)
         else:
-            self._save_pdf(data, headers, keys, r_type, f"{d_start} - {d_end}")
+            self._save_pdf(data, headers, keys, r_type + title_suffix, f"{d_start} - {d_end}")
 
     def _save_csv(self, data, headers, keys):
         path, _ = QFileDialog.getSaveFileName(self, "Зберегти CSV", "", "CSV (*.csv)")
@@ -124,15 +133,14 @@ class ReportsView(QWidget):
         if not path:
             return
 
-        # Формуємо HTML
         html = f"""
         <html>
         <head>
             <style>
-                body {{ font-family: Arial; }}
-                h1 {{ color: #2c3e50; }}
-                table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
-                th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+                body {{ font-family: Arial, sans-serif; }}
+                h1 {{ color: #2c3e50; font-size: 20px; }}
+                table {{ width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 12px; }}
+                th, td {{ border: 1px solid #ddd; padding: 6px; text-align: left; }}
                 th {{ background-color: #2980b9; color: white; }}
                 tr:nth-child(even) {{ background-color: #f2f2f2; }}
             </style>
@@ -148,11 +156,15 @@ class ReportsView(QWidget):
                 <tbody>
         """
         
-        for row in data:
+        limit = 2000 # Лимит строк для PDF
+        for i, row in enumerate(data):
+            if i >= limit:
+                html += f"<tr><td colspan='{len(headers)}'>... (показано перші {limit} записів) ...</td></tr>"
+                break
+                
             html += "<tr>"
             for k in keys:
                 val = str(row.get(k, ''))
-                # Очистка від T
                 val = val.replace('T', ' ')
                 html += f"<td>{val}</td>"
             html += "</tr>"
@@ -164,7 +176,6 @@ class ReportsView(QWidget):
         </html>
         """
 
-        # Друк у PDF
         document = QTextDocument()
         document.setHtml(html)
         

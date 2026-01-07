@@ -26,7 +26,6 @@ class StatsView(QWidget):
         sp_layout.addWidget(QLabel("Інвертор:"))
         self.combo_inv = QComboBox()
         self.combo_inv.setStyleSheet(INPUT_STYLE)
-        # Завантаження в showEvent
         sp_layout.addWidget(self.combo_inv)
         
         sp_layout.addWidget(QLabel("З:"))
@@ -56,10 +55,13 @@ class StatsView(QWidget):
         self.lbl_gen = self._create_card("Генерація (Wh)", "0.0")
         self.lbl_eff = self._create_card("Сер. ККД (%)", "0.0")
         self.lbl_rel = self._create_card("Надійність", "1.0")
+        # НОВАЯ КАРТОЧКА
+        self.lbl_int = self._create_card("Інтенсивність порушень", "0.00")
         
         results_panel.addWidget(self.lbl_gen)
         results_panel.addWidget(self.lbl_eff)
         results_panel.addWidget(self.lbl_rel)
+        results_panel.addWidget(self.lbl_int)
         layout.addLayout(results_panel)
 
         # --- Графіки ---
@@ -69,7 +71,6 @@ class StatsView(QWidget):
         self.setLayout(layout)
 
     def showEvent(self, event):
-        """Оновлюємо список інверторів при відкритті вкладки"""
         self._load_inverters()
         super().showEvent(event)
 
@@ -109,15 +110,18 @@ class StatsView(QWidget):
         d_start = self.date_start.date().toString("yyyy-MM-dd")
         d_end = self.date_end.date().toString("yyyy-MM-dd")
 
+        # Получаем данные
         data = self.db_manager.get_sensor_data_by_period(inv_id, d_start, d_end)
-        errors = self.db_manager.get_errors_count_by_period(inv_id, d_start, d_end)
+        errors_count = self.db_manager.get_errors_count_by_period(inv_id, d_start, d_end)
         
         if not data:
             QMessageBox.information(self, "Інфо", "Немає даних за цей період")
             return
 
+        # 1. Генерация
         total_gen = Calculator.calculate_generation([dict(r) for r in data])
         
+        # 2. ККД
         eff_sum = 0
         count = 0
         eff_history = []
@@ -131,13 +135,22 @@ class StatsView(QWidget):
             eff_history.append(eff)
             
         avg_eff = eff_sum / count if count > 0 else 0
+        
+        # 3. Надежность и Интенсивность
         days = self.date_start.date().daysTo(self.date_end.date()) + 1
-        reliability = Calculator.calculate_reliability_index(errors, days * 24)
+        total_hours = days * 24.0
+        
+        reliability = Calculator.calculate_reliability_index(errors_count, total_hours)
+        intensity = Calculator.calculate_violation_intensity(errors_count, total_hours)
 
+        # Обновление UI
         self.lbl_gen.layout().itemAt(1).widget().setText(f"{total_gen:.2f}")
         self.lbl_eff.layout().itemAt(1).widget().setText(f"{avg_eff:.1f}%")
         self.lbl_rel.layout().itemAt(1).widget().setText(f"{reliability:.3f}")
+        # Вывод интенсивности
+        self.lbl_int.layout().itemAt(1).widget().setText(f"{intensity:.4f}")
 
+        # График
         self.canvas.axes.cla()
         self.canvas.axes.plot(timestamps, eff_history, 'r-', label='ККД (%)')
         self.canvas.axes.set_title("Динаміка ККД")
