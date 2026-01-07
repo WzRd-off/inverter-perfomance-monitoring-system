@@ -14,7 +14,7 @@ class DatabaseManager:
             try:
                 os.makedirs(folder)
             except OSError as e:
-                print(f"ERROR: Не удалось создать папку {folder}: {e}")
+                print(f"ERROR: Не Вдалося створити папку {folder}: {e}")
 
     def connect(self):
         if self.connection is None:
@@ -23,7 +23,7 @@ class DatabaseManager:
                 self.connection.row_factory = sqlite3.Row
                 self.connection.execute("PRAGMA foreign_keys = ON;")
             except sqlite3.Error as e:
-                print(f"CRITICAL ERROR: Ошибка подключения к БД: {e}")
+                print(f"CRITICAL ERROR: Помилка підключення до БД: {e}")
 
     def close(self):
         if self.connection:

@@ -12,14 +12,14 @@ def main():
     app = QApplication(sys.argv)
     
     # 1. Инициализация Базы Данных
-    print("Подключение к базе данных...")
+    print("Підключення до БД...")
     db_manager = DatabaseManager(DB_PATH)
     
     # Создаем таблицы, если их нет
     if db_manager.execute_script(SCHEMA_PATH):
-        print("База данных успешно инициализирована.")
+        print("БД успішно ініціалізована.")
     else:
-        print("Ошибка инициализации БД!")
+        print("Помилка ініціалізації БД!")
         sys.exit(1)
 
     # 2. Запуск окна логина
